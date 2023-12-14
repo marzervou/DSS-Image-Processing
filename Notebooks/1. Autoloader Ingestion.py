@@ -52,6 +52,10 @@ images = spark.readStream.format("cloudFiles") \
 
 # COMMAND ----------
 
+display(images)
+
+# COMMAND ----------
+
 # MAGIC %md ###Expand the DataFrame with extra metadata columns.
 # MAGIC
 # MAGIC Extract some frequently used metadata from `images` DataFrame:
