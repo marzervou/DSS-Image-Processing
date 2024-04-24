@@ -1,6 +1,19 @@
 # Databricks notebook source
-dbutils.widgets.text("path", "/tmp/flowers/delta", "Output Delta table path")
-dbutils.widgets.text("ckpt_path", "/tmp/flowers/ckpt", "checkpointLocation path")
+# MAGIC %md to copy from DBFS to Volumes
+
+# COMMAND ----------
+
+dbutils.fs.cp("dbfs:/FileStore/FileStore/Users/konstantina_maria/training_data","/Volumes/dss/imageocr/training_data",True)
+
+# COMMAND ----------
+
+dbutils.widgets.text("path", "/Volumes/dss/imageocr/training_data/images/delta", "output delta table path")
+dbutils.widgets.text("ckpt_path", "/Volumes/dss/imageocr/training_data/images/ckpt", "checkpointLocation path")
+
+# COMMAND ----------
+
+dbutils.widgets.text("path", "/dss/imageocr/training_data/images_clean", "output delta table path")
+dbutils.widgets.text("ckpt_path", "/dss/imageocr/images_clean_ckpt", "checkpointLocation path")
 
 # COMMAND ----------
 
@@ -22,14 +35,13 @@ from PIL import Image
 
 # COMMAND ----------
 
-# MAGIC %md ### The flowers dataset
+# MAGIC %md ### Read data from Volumes
 # MAGIC
-# MAGIC This example uses the [flowers dataset](https://www.tensorflow.org/datasets/catalog/tf_flowers) from the TensorFlow team.
-# MAGIC It contains flower photos stored under five sub-directories, one per class, and is available in Databricks Datasets for easy access.
+# MAGIC Location: /Volumes/dss/imageocr/training_dataset/training_data
 
 # COMMAND ----------
 
-# MAGIC %fs ls /databricks-datasets/flower_photos
+# MAGIC %fs ls /Volumes/dss/imageocr/training_data
 
 # COMMAND ----------
 
@@ -46,13 +58,26 @@ from PIL import Image
 images = spark.readStream.format("cloudFiles") \
   .option("cloudFiles.format", "binaryFile") \
   .option("recursiveFileLookup", "true") \
-  .option("pathGlobFilter", "*.jpg") \
-  .load("/databricks-datasets/flower_photos") \
+  .option("pathGlobFilter", "*.png") \
+  .load("/Volumes/dss/imageocr/training_data/images/")\
   .repartition(4)
 
 # COMMAND ----------
 
-display(images)
+from PIL import Image
+import matplotlib.pyplot as plt
+ 
+def display_image(path, dpi=300):
+    img = Image.open(path)
+    width, height = img.size
+    plt.figure(figsize=(width / dpi, height / dpi))
+    plt.imshow(img, interpolation="nearest", aspect="auto")
+ 
+
+# COMMAND ----------
+
+display_image("/Volumes/dss/imageocr/training_data/images/0000971160-1.png")
+
 
 # COMMAND ----------
 
@@ -66,7 +91,7 @@ display(images)
 
 def extract_label(path_col):
   """Extract label from file path using built-in SQL functions."""
-  return regexp_extract(path_col, "flower_photos/([^/]+)", 1)
+  return regexp_extract(path_col, "training_images/([^/]+)", 1)
 
 # COMMAND ----------
 
@@ -84,9 +109,13 @@ def extract_size_udf(content_series):
 
 df = images.select(
   col("path"),
-  extract_size_udf(col("content")).alias("size"),
-  extract_label(col("path")).alias("label"),
+  # extract_size_udf(col("content")).alias("size"),
+  # extract_label(col("path")).alias("label"),
   col("content"))
+
+# COMMAND ----------
+
+display(df)
 
 # COMMAND ----------
 
@@ -101,6 +130,15 @@ df = images.select(
 
 # COMMAND ----------
 
+#/Volumes/dss/imageocr/training_dataset/ckpt
+#/Volumes/dss/imageocr/training_dataset/delta
+
+# COMMAND ----------
+
+path
+
+# COMMAND ----------
+
 # Image data is already compressed, so you can turn off Parquet compression.
 spark.conf.set("spark.sql.parquet.compression.codec", "uncompressed")
 # Replace the paths by your preferred paths
@@ -109,7 +147,7 @@ ckpt_path = dbutils.widgets.get("ckpt_path")
 df.writeStream.format("delta") \
   .option("checkpointLocation", ckpt_path) \
   .trigger(once=True) \
-  .start(path)
+  .start(path)#
 
 # COMMAND ----------
 

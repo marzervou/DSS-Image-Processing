@@ -26,7 +26,28 @@
 
 # COMMAND ----------
 
-# MAGIC %run ./_resources/00-init $reset_all_data=false $db=dbdemos $catalog=manufacturing_pcb
+# MAGIC %run ./_resources/00-init $reset_all_data=false $db=dbdemos $catalog=dss
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC USE CATALOG dss;
+# MAGIC USE dss.imageocr
+
+# COMMAND ----------
+
+# MAGIC %md 
+# MAGIC # Create Checkpoint location
+
+# COMMAND ----------
+
+#dbutils.widgets.text("path", "/Volumes/dss/imageocr/images_clean", "output delta table path")
+#dbutils.widgets.text("ckpt_path", "/Volumes/dss/imageocr/images_clean_ckpt", "checkpointLocation path")
+
+# COMMAND ----------
+
+dbutils.widgets.text("path", "/dss/imageocr/training_data/images_clean", "output delta table path")
+dbutils.widgets.text("ckpt_path", "/dss/imageocr/images_clean_ckpt", "checkpointLocation path")
 
 # COMMAND ----------
 
@@ -37,11 +58,11 @@
 
 # COMMAND ----------
 
-# MAGIC %fs ls /dbdemos/manufacturing/pcb/Images/Normal/
+# MAGIC %fs ls /Volumes/dss/imageocr/training_data/images/
 
 # COMMAND ----------
 
-# MAGIC %fs ls /dbdemos/manufacturing/pcb/labels
+# MAGIC %fs ls /Volumes/dss/imageocr/training_data/annotations
 
 # COMMAND ----------
 
@@ -63,9 +84,7 @@ def display_image(path, dpi=300):
     plt.figure(figsize=(width / dpi, height / dpi))
     plt.imshow(img, interpolation="nearest", aspect="auto")
 
-
-display_image("/dbfs/dbdemos/manufacturing/pcb/Images/Normal/0000.JPG")
-display_image("/dbfs/dbdemos/manufacturing/pcb/Images/Anomaly/000.JPG")
+display_image("/Volumes/dss/imageocr/training_data/images/0000971160.png")
 
 # COMMAND ----------
 
@@ -91,42 +110,74 @@ display_image("/dbfs/dbdemos/manufacturing/pcb/Images/Anomaly/000.JPG")
 
 # COMMAND ----------
 
-(spark.readStream.format("cloudFiles")
-                 .option("cloudFiles.format", "binaryFile")
-                 .option("pathGlobFilter", "*.JPG")
-                 .option("recursiveFileLookup", "true")
-                 .option("cloudFiles.schemaLocation", "/dbdemos/manufacturing/pcb/stream/pcb_schema")
-                 .load(f"/dbdemos/manufacturing/pcb/Images/")
-    .withColumn("filename", F.substring_index(col("path"), "/", -1))
-    .writeStream.trigger(availableNow=True)
-                .option("checkpointLocation", f"/dbdemos/manufacturing/pcb/stream/pcb_checkpoint")
-                .toTable("pcb_images").awaitTermination())
+images = spark.readStream.format("cloudFiles") \
+  .option("cloudFiles.format", "binaryFile") \
+  .option("recursiveFileLookup", "true") \
+  .option("pathGlobFilter", "*.png") \
+  .load("/Volumes/dss/imageocr/training_data/images/")\
+  .repartition(4)
 
-spark.sql("ALTER TABLE pcb_images OWNER TO `account users`")
-display(spark.table("pcb_images"))
+# COMMAND ----------
+
+display(images)
+
+# COMMAND ----------
+
+df = images.select(
+  col("path"),
+  # extract_size_udf(col("content")).alias("size"),
+  # extract_label(col("path")).alias("label"),
+  col("content"))
+
+# COMMAND ----------
+
+display(df)
+
+# COMMAND ----------
+
+# Image data is already compressed, so you can turn off Parquet compression.
+spark.conf.set("spark.sql.parquet.compression.codec", "uncompressed")
+
+# Replace the paths by your preferred paths
+(df.writeStream.format("delta")
+.outputMode("append")
+.trigger(availableNow=True)
+.option("checkpointLocation", "/Users/maria.zervou@databricks.com/demos/dss_dbdemos")
+.toTable("images_clean"))
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### Load CSV label files with Auto Loader
-# MAGIC CSV files can easily be loaded using Databricks [Auto Loader](https://docs.databricks.com/ingestion/auto-loader/index.html), including schema inference and evolution.
+# MAGIC ### Load JSON label files with Auto Loader
+# MAGIC json files can easily be loaded using Databricks [Auto Loader](https://docs.databricks.com/ingestion/auto-loader/index.html), including schema inference and evolution.
 
 # COMMAND ----------
 
-(spark.readStream.format("cloudFiles")
-                 .option("cloudFiles.format", "csv")
-                 .option("header", True)
-                 .option("cloudFiles.schemaLocation", "/dbdemos/manufacturing/pcb/stream/labels_schema")
-                 .load(f"/dbdemos/manufacturing/pcb/labels/")
-      .withColumn("filename", F.substring_index(col("image"), "/", -1))
-      .select("filename", "label")
-      .withColumnRenamed("label", "labelDetail")
-      .writeStream.trigger(availableNow=True)
-                  .option("checkpointLocation", "/dbdemos/manufacturing/pcb/stream/labels_checkpoint")
-                  .toTable("pcb_labels").awaitTermination())
+df = spark.read.option("multiline","true").format("json").load("/Volumes/dss/imageocr/training_data/annotations/0000971160.json")
+display(df)
 
-spark.sql("ALTER TABLE pcb_labels OWNER TO `account users`")
-display(spark.table("pcb_labels"))
+# COMMAND ----------
+
+df_annotations = spark.read.option("multiline","true").format("json").load("/Volumes/dss/imageocr/training_data/annotations/")
+df_annotations.write.saveAsTable("annotations_clean")
+
+# COMMAND ----------
+
+# annotation_df = (spark.readStream.format("cloudFiles")
+#                 .option("cloudFiles.format", "json")
+#                 .option("header", True)
+#                 .option("cloudFiles.schemaLocation", "/dbdemos/manufacturing/pcb/stream/annotation_schema")
+#                 .load(f"/Volumes/dss/imageocr/training_data/annotations/"))
+#       # .withColumn("filename", F.substring_index(col("image"), "/", -1))
+#       # .select("filename", "label")
+#       # .withColumnRenamed("label", "labelDetail")
+#       # .writeStream.trigger(availableNow=True)
+#       #             .option("checkpointLocation", "/dbdemos/manufacturing/pcb/stream/labels_checkpoint")
+#       #             .toTable("pcb_labels").awaitTermination())
+
+# # spark.sql("ALTER TABLE pcb_labels OWNER TO `account users`")
+# # display(spark.table("pcb_labels"))
+# display(annotation_df)
 
 # COMMAND ----------
 
@@ -143,15 +194,15 @@ display(spark.table("pcb_labels"))
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC CREATE OR REPLACE TABLE training_dataset AS 
-# MAGIC   (SELECT 
-# MAGIC     *, CASE WHEN labelDetail = 'normal' THEN 'normal' ELSE 'damaged' END as label
-# MAGIC     FROM pcb_images INNER JOIN pcb_labels USING (filename)) ;
-# MAGIC
-# MAGIC ALTER TABLE training_dataset OWNER TO `account users`;
-# MAGIC
-# MAGIC SELECT * FROM training_dataset LIMIT 10;
+# %sql
+# CREATE OR REPLACE TABLE training_dataset AS 
+#   (SELECT 
+#     *, CASE WHEN labelDetail = 'normal' THEN 'normal' ELSE 'damaged' END as label
+#     FROM pcb_images INNER JOIN pcb_labels USING (filename)) ;
+
+# ALTER TABLE training_dataset OWNER TO `account users`;
+
+# SELECT * FROM training_dataset LIMIT 10;
 
 # COMMAND ----------
 
