@@ -38,7 +38,7 @@ pddl_ocr = PaddleOCR(lang='en', use_gpu=False)
 
 # COMMAND ----------
 
-link = '/Volumes/dss/imageocr/shampoo_data/ L_Oreal_Paris_Elvive_Dream_Lengths_Conditioner_Cream_back.jpg'
+link = '/Volumes/dss/imageocr/shampoo_data/L_Oreal_Paris_Elvive_Dream_Lengths_Conditioner_Cream_back.jpg'
 # response = requests.get(link)
 image = Image.open(link)
 np_img = np.array(image)
@@ -140,6 +140,7 @@ output_data
 
 ocr_signature = infer_signature(input_data, output_data)
 
+
 # COMMAND ----------
 
 #pip_requirements = [f'numpy=={np.__version__}','paddlepaddle-gpu==2.5.1','paddleocr','cudatoolkit==11.7','torch==1.13.1']
@@ -176,11 +177,16 @@ loaded_model.predict(input_data)
 
 # COMMAND ----------
 
-reg_model_info = mlflow.register_model(f"runs:/{run.info.run_id}/model", 'shampoo_paddle_ocr')
+reg_model_info = mlflow.register_model(f"runs:/{run.info.run_id}/model", 'dss.imageocr.shampoo_paddle_ocr')
 
 # COMMAND ----------
 
-mlflow.models.utils.add_libraries_to_model(f"models:/shampoo_paddle_ocr/{reg_model_info.version}")
+reg_model_info
+
+# COMMAND ----------
+
+from mlflow.models.utils import add_libraries_to_model
+add_libraries_to_model(f"models:/dss.imageocr.shampoo_paddle_ocr/{reg_model_info.version}")
 
 # COMMAND ----------
 
@@ -202,14 +208,9 @@ input_data['ocr_text'] = output_data
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC
-
-# COMMAND ----------
-
 spark_df = spark.createDataFrame(input_data)
-spark_df.write.format("delta").mode("overwrite").saveAsTable("dss.imageocr.clean_data")
- 
+spark_df.write.format("delta").mode("overwrite").option("mergeSchema", "true").saveAsTable("dss.imageocr.clean_data")
+
 
 # COMMAND ----------
 
