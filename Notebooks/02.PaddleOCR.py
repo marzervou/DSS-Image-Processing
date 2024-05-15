@@ -46,14 +46,6 @@ image
 
 # COMMAND ----------
 
-#link = 'https://images.meesho.com/images/products/142209432/gfowe_512.jpg'
-#response = requests.get(link)
-#image = Image.open(io.BytesIO(response.content)).convert("RGB")
-#np_img = np. array(image).astype(np.float32)
-#image
-
-# COMMAND ----------
-
 result = pddl_ocr.ocr(np_img, cls=False)
 result
 
@@ -125,12 +117,6 @@ input_data = pd.DataFrame({'image_link':[link]})
 custom_ocr.load_context(None)
 output_data = custom_ocr.predict(None, input_data)
 
-
-
-# COMMAND ----------
-
-output_data
-
 # COMMAND ----------
 
 # MAGIC %md
@@ -146,8 +132,6 @@ ocr_signature = infer_signature(input_data, output_data)
 #pip_requirements = [f'numpy=={np.__version__}','paddlepaddle-gpu==2.5.1','paddleocr','cudatoolkit==11.7','torch==1.13.1']
 
 pip_requirements = [f'numpy=={np.__version__}','paddleocr','torch==1.13.1']
-
-
 default_conda_env = mlflow.pyfunc.get_default_conda_env()
 default_conda_env['channels'].append("https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/Paddle/")
 #default_conda_env['dependencies'].append('cudatoolkit=11.7')
@@ -170,6 +154,8 @@ with mlflow.start_run(run_name="shampoo_paddle_ocr") as run:
 # COMMAND ----------
 
 loaded_model = mlflow.pyfunc.load_model(f"runs:/{run.info.run_id}/model")
+# loaded_model = mlflow.pyfunc.load_model('runs:/8d2a26c33be94d0dbcdcac7043d8fe9d/model_wheels')
+
 
 # COMMAND ----------
 
@@ -177,7 +163,8 @@ loaded_model.predict(input_data)
 
 # COMMAND ----------
 
-reg_model_info = mlflow.register_model(f"runs:/{run.info.run_id}/model", 'dss.imageocr.shampoo_paddle_ocr')
+mlflow.set_registry_uri('databricks-uc')
+reg_model_info = mlflow.register_model(f"runs:/{run.info.run_id}/model", 'dss.imageocr.mz_shampoo_paddle_ocr')
 
 # COMMAND ----------
 
@@ -186,7 +173,7 @@ reg_model_info
 # COMMAND ----------
 
 from mlflow.models.utils import add_libraries_to_model
-add_libraries_to_model(f"models:/dss.imageocr.shampoo_paddle_ocr/{reg_model_info.version}")
+add_libraries_to_model(f"models:/dss.imageocr.mz_shampoo_paddle_ocr/{reg_model_info.version}")
 
 # COMMAND ----------
 
@@ -215,7 +202,3 @@ spark_df.write.format("delta").mode("overwrite").option("mergeSchema", "true").s
 # COMMAND ----------
 
 spark_df.show()
-
-# COMMAND ----------
-
-
